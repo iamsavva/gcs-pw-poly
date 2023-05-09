@@ -74,7 +74,7 @@ class Vertex:
         assert n == len(lb) == len(ub)
         temp_prog = MathematicalProgram()
         x_vec = temp_prog.NewIndeterminates(n)
-        poly = self.evaluate_partial_potential_at_point(x_vec)
+        poly = Polynomial(self.evaluate_partial_potential_at_point(x_vec))
         for i in range(self.n):
             x_min, x_max, x = lb[i], ub[i], x_vec[i]
             integral_of_poly = poly.Integrate(x)
@@ -166,7 +166,7 @@ class BoxVertex(PolytopeVertex):
         return self.cost_at_point(x, solution)
 
     def cost_of_integral(self):
-        self.cost_integral_over_a_box(self.lb.reshape(self.n), self.ub.reshape(self.n))
+        return self.cost_integral_over_a_box(self.lb.reshape(self.n), self.ub.reshape(self.n))
 
     
 class EllipsoidVertex(Vertex):
