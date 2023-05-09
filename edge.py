@@ -120,35 +120,3 @@ class Edge:
         prog.AddPositiveSemidefiniteConstraint(res)
 
 
-n = 2
-pot_type = PSD
-
-prog = MathematicalProgram()
-vertices = []
-
-vt = BoxVertex("t", prog, np.zeros(n), 3*np.ones(n), pot_type)
-vv = BoxVertex("v", prog, 0*np.ones(n), 3*np.ones(n), pot_type)
-vs = BoxVertex("s", prog, 0*np.ones(n), 3*np.ones(n), pot_type)
-
-e = Edge( vs, vv )
-e.set_quadratic_cost()
-e.s_procedure(prog)
-
-e2 = Edge( vv, vt )
-e2.set_quadratic_cost()
-e2.s_procedure(prog)
-
-prog.AddLinearConstraint(vt.cost_at_point(np.zeros(n)) == 0)
-
-# cost = vs.cost_at_point( 2 * np.ones(n) )
-cost = vs.cost_of_integral()
-prog.AddLinearCost( -cost )
-
-solution = Solve(prog)
-print(solution.is_success())
-print(solution.get_optimal_cost())
-
-print(vs.cost_at_point(2*np.ones(n), solution))
-
-
-
