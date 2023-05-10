@@ -17,7 +17,7 @@ from pydrake.symbolic import Polynomial, Variable, Variables
 
 from pydrake.math import eq, le, ge
 
-from util import timeit
+from util import timeit, INFO, ERROR, WARN, YAY
 from vertex import Vertex, BoxVertex, PolytopeVertex, EllipsoidVertex
 from vertex import FREE, PSD, PSD_ON_STATE, PSD_WITH_IDENTITY
 
@@ -93,7 +93,7 @@ class Edge:
         return M
     
     
-    def get_left_right_set_multipliers(self, prog: MathematicalProgram):
+    def get_left_right_set_multiplier_terms(self, prog: MathematicalProgram):
         res = 0
 
         left_m_deg = self.left.multiplier_deg()
@@ -111,16 +111,11 @@ class Edge:
         return res
 
 
-    def get_potential_diff(self):
+    def get_potential_difference(self):
         n = self.n
-
-        Ql = self.left.Q
-        Qr = self.right.Q
-        rl = self.left.r
-        rr = self.right.r
-        sl = self.left.s
-        sr = self.right.s
-
+        Ql, Qr = self.left.Q, self.right.Q
+        rl, rr = self.left.r, self.right.r
+        sl, sr = self.left.s, self.right.s
         O_n = np.zeros((n,n))
         return np.vstack((
             np.hstack( (sr-sl,  -rl.T,   rr.T) ), 
@@ -132,13 +127,12 @@ class Edge:
     def s_procedure(self, prog:MathematicalProgram, A=None, B=None):
         res = 0
 
-        res = self.get_cost() + self.get_potential_diff()
+        res = self.get_cost() + self.get_potential_difference()
 
-        res = res + self.get_left_right_set_multipliers(prog)
+        res = res + self.get_left_right_set_multiplier_terms(prog)
 
-        # TODO: this is not general enough
+        # TODO: this is not general enough, fix me
         res = res + self.get_linear_constraint_multiplier_terms(prog)
-
         if A is not None and B is not None:
             res = res + self.add_linear_constraints_equality_constraint(A, B, prog)
 
@@ -160,27 +154,94 @@ class LinearDynamicsEdge:
         control_dim = self.control_dim
         assert Q.shape == (self.state_dim, self.state_dim)
         assert R.shape == (self.control_dim, self.control_dim)
-        
-        return np.vstack((
-            np.zeros((1, state_dim+control_dim+1)),
-            np.hstack( (np.zeros((state_dim,1)), Q, np.zeros((state_dim,control_dim))) ),
-            np.hstack((np.zeros((control_dim,1+state_dim)), R)) ))
+        assert np.allclose( self.left.x_star, self.right.x_star )
 
-    def lqr_s_procedure(self, prog:MathematicalProgram, A, B, Q, R):
+        y = self.left.x_star
+
+        return np.vstack((
+            np.hstack( ( y.T @ Q @ y, -y.T @ Q, np.zeros((1,control_dim)) ) ),
+            np.hstack( (-Q@y ,            Q,    np.zeros((state_dim,control_dim))) ),
+            np.hstack((np.zeros((control_dim,1+state_dim)), R)) ))
+        
+        # return np.vstack((
+        #     np.zeros((1, state_dim+control_dim+1)),
+        #     np.hstack( (np.zeros((state_dim,1)), Q, np.zeros((state_dim,control_dim))) ),
+        #     np.hstack((np.zeros((control_dim,1+state_dim)), R)) ))
+    
+    def get_left_right_set_multiplier_terms(self, prog: MathematicalProgram, dynamics: npt.NDArray):
+        res = 0
+
+        left_m_deg = self.left.multiplier_deg()
+        right_m_deg = self.right.multiplier_deg()
+
+        if left_m_deg > 0:
+            # add a nonnegative multiplier
+            self.lambda_e_left = prog.NewContinuousVariables(left_m_deg, "l1_" + self.name)
+            prog.AddLinearConstraint( ge(self.lambda_e_left, np.zeros(left_m_deg) ) )
+            # form a term
+            set_constraint = self.left.make_multiplier_terms(self.lambda_e_left)
+            # apply constraints to x_n, u_n
+            # left edge vertex is in left set
+            res = res + set_constraint
+
+            if type(self.right) != BoxVertex or type(self.left) != BoxVertex:
+                # right edge vertex is in left set; this is done in order to not clip edges
+                self.lambda_e_right_in_left = prog.NewContinuousVariables(left_m_deg, "l2_" + self.name)
+                prog.AddLinearConstraint( ge(self.lambda_e_right_in_left, np.zeros(left_m_deg) ) )
+
+                # form a term
+                another_set_constraint = self.left.make_multiplier_terms(self.lambda_e_right_in_left)
+                # right edge vertex is in left set
+                res = res + dynamics.T @ another_set_constraint * dynamics
+        
+        if right_m_deg > 0:
+            if type(self.right) != BoxVertex or type(self.left) != BoxVertex:
+                WARN("some edge is not a box")
+                # add a nonnegative multiplier
+                self.lambda_e_right = prog.NewContinuousVariables(right_m_deg, "l3_" + self.name)
+                prog.AddLinearConstraint( ge(self.lambda_e_right, np.zeros(right_m_deg) ) )
+                # get the constraints
+                set_constraint = self.right.make_multiplier_terms(self.lambda_e_right)
+                # apply constraints to x_{n+1}
+                # right edge vertex is in right set
+                res = res + dynamics.T @ set_constraint * dynamics
+            else:
+                # add a nonnegative multiplier
+                self.lambda_e_right = prog.NewContinuousVariables(right_m_deg, "l2_" + self.name)
+                prog.AddLinearConstraint( ge(self.lambda_e_right, np.zeros(right_m_deg) ) )
+                # intersect left and right boxes and get the constraints
+                set_constraint = self.right.make_set_intersection_multiplier_terms(self.left, self.lambda_e_right)
+                # right edge-vertex is in right set
+                res = res + dynamics.T @ set_constraint * dynamics
+
+        return res
+
+    def s_procedure(self, prog:MathematicalProgram, A, B, Q, R):
         state_dim = self.state_dim
         control_dim = self.control_dim
         full_dim = state_dim + control_dim + 1
 
+        # build the potential difference terms
         Sn = self.left.get_quadratic_potential_matrix()
 
         # plug in for x_n_1 = A x_n + B u_n
         Sn1 = self.right.get_quadratic_potential_matrix()
 
-        mat = np.vstack((
+        dynamics = np.vstack((
             np.zeros( (1, full_dim) ),
             np.hstack( (np.zeros((state_dim,1)), A, B) ),
-            np.zeros ((control_dim, full_dim)) ))        
+            np.zeros ((control_dim, full_dim)) ))  
+        
+        potential_difference = dynamics.T @ Sn1 @ dynamics - Sn
 
-        psd_mat = self.make_lqr_cost_matrix(Q,R) + mat.T @ Sn1 @ mat - Sn
+        # edge cost
+        edge_cost = self.make_lqr_cost_matrix(Q,R)
+
+        # linear state inequalities stuff
+        # set_multiplier_terms = self.get_left_right_set_multiplier_terms(prog, dynamics)
+        set_multiplier_terms = 0
+
+        # form the entire matrix
+        psd_mat = edge_cost + potential_difference + set_multiplier_terms
 
         prog.AddPositiveSemidefiniteConstraint(psd_mat)
