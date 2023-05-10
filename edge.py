@@ -90,18 +90,7 @@ class Edge:
 
         multiplier = prog.NewContinuousVariables(n, "m_"+ self.name)
         M = T.T @ np.diag(multiplier) @ T
-
         return M
-    
-        # row1 = np.zeros( (1,d) )
-        # row2 = np.hstack( (np.zeros((n,1)), A.T @ A , A.T @ B, -A.T, np.zeros((n,m))) )
-        # row3 = np.hstack( (np.zeros((m,1)), B.T @ A , B.T @ B, -B.T, np.zeros((m,m))) )
-        # row4 = np.hstack( (np.zeros((n,1)), -A , -B, np.eye(n), np.zeros((n,m))) )
-        # row5 = np.zeros( (m,d) )
-        # M = np.vstack( (row1, row2, row3, row4, row5) )
-
-        # multiplier = prog.NewContinuousVariables(1, "m_"+ self.name)[0]
-        # return M * multiplier
     
     
     def get_left_right_set_multipliers(self, prog: MathematicalProgram):
@@ -139,34 +128,6 @@ class Edge:
             np.hstack( (rr,      O_n,    Qr ) ) 
             ))
     
-    def make_lqr_cost_matrix(self, Q, R):
-        n = len(Q)
-        m = len(R)
-        
-        return np.vstack((
-            np.zeros((1,n+m+1)),
-            np.hstack( (np.zeros((n,1)), Q, np.zeros((n,m))) ),
-            np.hstack((np.zeros((m,1+n)), R)) ))
-
-    
-    def lqr_s_procedure(self, prog:MathematicalProgram, A, B, Q, R):
-
-        Sn = self.left.get_quadratic_potential_matrix()
-        Sn1 = self.right.get_quadratic_potential_matrix()
-
-        n = self.left.state_dim
-        m = self.left.control_dim
-
-        mat = np.vstack((
-            np.zeros( (1, n+m+1) ),
-            np.hstack( (np.zeros((n,1)), A, B) ),
-            np.zeros ((m,n+m+1)) ))
-        
-
-        Left = Sn - mat.T @ Sn1 @ mat
-        Right = self.make_lqr_cost_matrix(Q,R)
-
-        prog.AddPositiveSemidefiniteConstraint(Right-Left)
     
     def s_procedure(self, prog:MathematicalProgram, A=None, B=None):
         res = 0
@@ -175,6 +136,7 @@ class Edge:
 
         res = res + self.get_left_right_set_multipliers(prog)
 
+        # TODO: this is not general enough
         res = res + self.get_linear_constraint_multiplier_terms(prog)
 
         if A is not None and B is not None:
@@ -183,3 +145,42 @@ class Edge:
         prog.AddPositiveSemidefiniteConstraint(res)
 
 
+class LinearDynamicsEdge:
+    def __init__(self, v_left: Vertex, v_right: Vertex):
+        assert v_left.n == v_right.n, "vertices must have same dimensions"
+        self.left = v_left
+        self.right = v_right
+        self.n = self.left.n
+        self.state_dim = self.left.state_dim
+        self.control_dim = self.left.control_dim
+        self.name = self.left.name + " -> " + self.right.name
+
+    def make_lqr_cost_matrix(self, Q, R):
+        state_dim = self.state_dim
+        control_dim = self.control_dim
+        assert Q.shape == (self.state_dim, self.state_dim)
+        assert R.shape == (self.control_dim, self.control_dim)
+        
+        return np.vstack((
+            np.zeros((1, state_dim+control_dim+1)),
+            np.hstack( (np.zeros((state_dim,1)), Q, np.zeros((state_dim,control_dim))) ),
+            np.hstack((np.zeros((control_dim,1+state_dim)), R)) ))
+
+    def lqr_s_procedure(self, prog:MathematicalProgram, A, B, Q, R):
+        state_dim = self.state_dim
+        control_dim = self.control_dim
+        full_dim = state_dim + control_dim + 1
+
+        Sn = self.left.get_quadratic_potential_matrix()
+
+        # plug in for x_n_1 = A x_n + B u_n
+        Sn1 = self.right.get_quadratic_potential_matrix()
+
+        mat = np.vstack((
+            np.zeros( (1, full_dim) ),
+            np.hstack( (np.zeros((state_dim,1)), A, B) ),
+            np.zeros ((control_dim, full_dim)) ))        
+
+        psd_mat = self.make_lqr_cost_matrix(Q,R) + mat.T @ Sn1 @ mat - Sn
+
+        prog.AddPositiveSemidefiniteConstraint(psd_mat)

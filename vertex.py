@@ -74,13 +74,13 @@ class Vertex:
             self.r = np.vstack( (r, np.zeros((self.control_dim, 1))) )
             self.s = prog.NewContinuousVariables(1, "s_"+self.name).reshape(1,1)
 
+            # potential must evaluate to zero at the desired point
+            prog.AddLinearConstraint(self.evaluate_partial_potential_at_point( np.zeros(self.n) ) == 0 )
         else:
             self.r = prog.NewContinuousVariables(self.n, "r_" + self.name).reshape(self.n, 1)
             self.s = prog.NewContinuousVariables(1, "s_"+self.name).reshape(1,1)
 
-        # potential must evaluate to zero at the desired point
-        # TODO: this constraint may be degenerate depending on the formulation
-        prog.AddLinearConstraint(self.evaluate_partial_potential_at_point( np.zeros(self.n) ) == 0 )
+        
             
 
     def evaluate_partial_potential_at_point(self, x:npt.NDArray):
@@ -115,14 +115,7 @@ class Vertex:
         temp_prog = MathematicalProgram()
         x_vec = temp_prog.NewIndeterminates(k).reshape(k,1)
 
-        # expr = self.evaluate_partial_potential_at_point( np.vstack( (x_vec, np.zeros((self.control_dim,1)) ) ) )
-        # print(expr)
-        # poly = Polynomial( expr )
-
-        # poly = Polynomial( (x_vec.T @ self.Q[:k, :k] @ x_vec)[0,0] )
-
         poly = Polynomial( (x_vec.T @ self.Q[:k, :k] @ x_vec + 2*self.r[:k].T @ x_vec + self.s )[0,0] )
-        print(poly)
 
         for i in range(k):
             x_min, x_max, x = lb[i], ub[i], x_vec[i][0]

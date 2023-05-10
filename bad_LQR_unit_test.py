@@ -23,7 +23,7 @@ from vertex import FREE, PSD, PSD_ON_STATE, PSD_WITH_IDENTITY
 from edge import Edge
 
 
-def make_a_simple_lqr_test(N = 5):
+def make_a_simple_bad_lqr_test(N = 10, verbose=False):
     assert N >= 2, "need at least 2 horizon steps"
     # a 2d double integrator, goal at 0
     # LQR costs
@@ -38,10 +38,12 @@ def make_a_simple_lqr_test(N = 5):
     B[1,0], B[3,1] = dt, dt
 
     # vertex state
-    n = 6 # 4 + 2; 4 states, 2 controls
+    full_dim = 6
+    state_dim = 4
+
+
     # make PSD cost matrix
-    
-    L = np.zeros( (2*n+1, 2*n+1) )
+    L = np.zeros( (2*full_dim+1, 2*full_dim+1) )
     L[1:5, 1:5] = Q
     L[5:7, 5:7] = R
 
@@ -49,56 +51,57 @@ def make_a_simple_lqr_test(N = 5):
     AL = np.hstack( (A,B) )
     AR = -np.hstack( ( np.eye(4), np.zeros((4,2)) ) )
 
-    vertices = []
-    edges = []
+    vertices = [] # type: T.List[Vertex]
+    edges = [] # type T.List[Edge]
 
     # add vertices
     prog = MathematicalProgram()
     for i in range(N+1):
-        v = Vertex(str(i), prog, n, PSD_ON_STATE, 4) # TODO: fix me
-        # v = Vertex(str(i), prog, n, PSD) # TODO: fix me
+        v = Vertex(str(i), prog, full_dim, PSD_ON_STATE, state_dim)
         vertices.append(v)
 
     # add edges
     for i in range(N):
         e = Edge(vertices[i], vertices[i+1])
         e.set_cost(L)
-        e.add_linear_constraints( AL, AR )
-        e.lqr_s_procedure(prog, A, B, Q, R)
-        # e.s_procedure(prog, A, B)
+        e.add_linear_constraints( AL, AR ) 
+        e.s_procedure(prog, A, B)
         edges.append(e)
 
     box_lb, box_ub = -1*np.ones(4), 1*np.ones(4)
 
     # maximize potential over the integral
     cost = vertices[0].cost_of_integral_over_the_state( box_lb, box_ub)
-    # cost = vertices[0].cost_at_point( np.array([3,0,3,0,0,0]) )
     prog.AddLinearCost(-cost)
-    prog.AddLinearConstraint(-cost>=-1000)
     prog.AddLinearConstraint( eq(vertices[-1].Q[:4, :4], Q_final) )
 
     timer = timeit()
     solution = Solve(prog)
     timer.dt()
-    print( solution.is_success() )
-    print( solution.get_optimal_cost() )
+    INFO( solution.is_success(), verbose=verbose )
+    INFO( solution.get_optimal_cost(), verbose=verbose )
 
     if solution.is_success():
-        S = np.zeros( (4,4) )
+        S = Q_final
         for i in range(N+1):
-            rounding = 10
-            INFO("S at step ", N-i, ":")
-            print( np.round( solution.GetSolution( vertices[N-i].Q[:4,:4] ), rounding) )
+            rounding = 3
 
-            WARN( "True at step ", N-i, ":")
-            WARN(np.round(S, rounding))
+            INFO("S at step ", N-i, ":", verbose=verbose)
+            pot_PSD = np.round( solution.GetSolution( vertices[N-i].Q[:4,:4] ), rounding)
+            INFO( pot_PSD, verbose=verbose )
+
+            WARN( "True at step ", N-i, ":", verbose=verbose)
+            WARN(np.round(S, rounding), verbose=verbose)
+
+            assert np.allclose(np.round(S, rounding), pot_PSD, rtol = 0.1), ERROR("MATRICES DON'T MATCH")
+
             S = Q + A.T @ S @ A - (A.T @ S @ B) @ np.linalg.inv(R + B.T @ S @ B ) @ (B.T @ S @ A)
         
 
-        
+    YAY("Passed LQR test implemented using the S procedure")
 
 
 if __name__ == "__main__":
-    make_a_simple_lqr_test(20)
+    make_a_simple_bad_lqr_test(5, True)
     
 
