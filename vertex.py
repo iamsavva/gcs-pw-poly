@@ -22,13 +22,16 @@ from pydrake.math import eq, le, ge
 FREE = "free"
 PSD = "psd"
 PSD_WITH_IDENTITY = "psd_with_identity"
-PSD_QUADRATIC = "psd_quadratic"
+PSD_ON_STATE = "PSD_ON_STATE"
 
 
 class Vertex:
-    def __init__(self, name:str, prog: MathematicalProgram, dim:int, pot_type:str=PSD):
+    def __init__(self, name:str, prog: MathematicalProgram, dim:int, pot_type:str=PSD, state_dim:int=None):
         self.n = dim
         self.name = name
+        if state_dim is not None:
+            self.state_dim = state_dim
+            self.control_dim = self.n - state_dim
         self.define_potential(prog, pot_type)
 
     def define_potential(self, prog: MathematicalProgram, pot_type:str):
@@ -39,31 +42,45 @@ class Vertex:
         #   [ s  r.T ] 
         #   [ r   Q  ] 
         # P(x) = x.T Q x + 2 r.T x + s
-
         
         # make potential quadratic if it's used for HJB and cost to go
         if pot_type == PSD:
             self.Q = prog.NewSymmetricContinuousVariables(self.n, "Q_" + self.name)
             prog.AddPositiveSemidefiniteConstraint(self.Q)
+
         elif pot_type == PSD_WITH_IDENTITY:
+            # technically we don't need Q the matrix Q to be PSD, we need Q and cost matrix L to be PSD
             self.Q = prog.NewSymmetricContinuousVariables(self.n, "Q_" + self.name)
             prog.AddPositiveSemidefiniteConstraint(self.Q + np.eye(self.n)) 
-        elif PSD_QUADRATIC:
-            Q = prog.NewSymmetricContinuousVariables(4, "Q_" + self.name)
+
+        elif PSD_ON_STATE:
+            # TODO: add an option to add a cost here
+            
+            # state is 1 x u, except we are only interested in the cost to go acting on 1 and x alone.
+            # PSD on state only -- on control inputs it's just 0
+            Q = prog.NewSymmetricContinuousVariables(self.state_dim, "Q_" + self.name)
             prog.AddPositiveSemidefiniteConstraint(Q) 
+            # complete the Q matrix
             self.Q = np.vstack((
-                np.hstack( (Q, np.zeros((4,2))) ),
-                np.hstack( (np.zeros((2,4)), np.zeros((2,2)) ) )
+                np.hstack( (Q, np.zeros((self.state_dim, self.control_dim))) ),
+                np.zeros((self.control_dim, self.n))
             ))
 
+        # add the linear terms
+        if pot_type == PSD_ON_STATE:
+            # PSD on state only -- define r and s for state only.
+            r = prog.NewContinuousVariables(self.state_dim, "r_" + self.name).reshape(self.state_dim, 1)
 
-        if pot_type == PSD_QUADRATIC:
-            # if quadratic, potential is P(x) = x.T Q x
-            self.r = np.zeros((self.n,1))
-            self.s = np.zeros((1,1))
+            self.r = np.vstack( (r, np.zeros((self.control_dim, 1))) )
+            self.s = prog.NewContinuousVariables(1, "s_"+self.name).reshape(1,1)
+
         else:
             self.r = prog.NewContinuousVariables(self.n, "r_" + self.name).reshape(self.n, 1)
             self.s = prog.NewContinuousVariables(1, "s_"+self.name).reshape(1,1)
+
+        # potential must evaluate to zero at the desired point
+        # TODO: this constraint may be degenerate depending on the formulation
+        prog.AddLinearConstraint(self.evaluate_partial_potential_at_point( np.zeros(self.n) ) == 0 )
             
 
     def evaluate_partial_potential_at_point(self, x:npt.NDArray):
@@ -79,7 +96,7 @@ class Vertex:
             Q, r, s = solution.GetSolution(self.Q), solution.GetSolution(self.r), solution.GetSolution(self.s)
             return (x.T @ Q @ x + 2*r.dot(x) + s)[0,0]
         
-    def cost_integral_over_a_box(self, lb:npt.NDArray, ub:npt.NDArray):
+    def cost_of_integral_over_a_box(self, lb:npt.NDArray, ub:npt.NDArray):
         n = self.n
         assert n == len(lb) == len(ub)
         temp_prog = MathematicalProgram()
@@ -91,12 +108,21 @@ class Vertex:
             poly = integral_of_poly.EvaluatePartial({x: x_max}) - integral_of_poly.EvaluatePartial({x:x_min})
         return poly.ToExpression()
     
-    def lqr_integral_over_first_k_states(self, lb:npt.NDArray, ub:npt.NDArray, k:int):
-        assert k == len(lb) == len(ub)
+    def cost_of_integral_over_the_state(self, lb:npt.NDArray, ub:npt.NDArray):
+        assert self.state_dim == len(lb) == len(ub)
+        k = self.state_dim
+
         temp_prog = MathematicalProgram()
         x_vec = temp_prog.NewIndeterminates(k).reshape(k,1)
 
-        poly = Polynomial( (x_vec.T @ self.Q[:k, :k] @ x_vec)[0,0] )
+        # expr = self.evaluate_partial_potential_at_point( np.vstack( (x_vec, np.zeros((self.control_dim,1)) ) ) )
+        # print(expr)
+        # poly = Polynomial( expr )
+
+        # poly = Polynomial( (x_vec.T @ self.Q[:k, :k] @ x_vec)[0,0] )
+
+        poly = Polynomial( (x_vec.T @ self.Q[:k, :k] @ x_vec + 2*self.r[:k].T @ x_vec + self.s )[0,0] )
+        print(poly)
 
         for i in range(k):
             x_min, x_max, x = lb[i], ub[i], x_vec[i][0]
@@ -109,6 +135,15 @@ class Vertex:
 
     def multiplier_deg(self):
         return 0
+    
+    def get_quadratic_potential_matrix(self):
+        Q = self.Q
+        r = self.r
+        s = self.s
+        return np.vstack((
+            np.hstack( (s, r.T) ),
+            np.hstack( (r, Q) ) ))
+
 
 class PolytopeVertex(Vertex):
     def __init__(self, name:str, prog: MathematicalProgram, A:npt.NDArray, b:npt.NDArray, pot_type=PSD):
@@ -185,7 +220,7 @@ class BoxVertex(PolytopeVertex):
         return self.cost_at_point(x, solution)
 
     def cost_of_integral(self):
-        return self.cost_integral_over_a_box(self.lb.reshape(self.n), self.ub.reshape(self.n))
+        return self.cost_of_integral_over_a_box(self.lb.reshape(self.n), self.ub.reshape(self.n))
 
     
 class EllipsoidVertex(Vertex):

@@ -19,7 +19,7 @@ from pydrake.math import eq, le, ge
 
 from util import timeit, INFO, YAY, ERROR, WARN
 from vertex import Vertex, BoxVertex, PolytopeVertex, EllipsoidVertex
-from vertex import FREE, PSD, PSD_QUADRATIC, PSD_WITH_IDENTITY
+from vertex import FREE, PSD, PSD_ON_STATE, PSD_WITH_IDENTITY
 from edge import Edge
 
 
@@ -45,10 +45,6 @@ def make_a_simple_lqr_test(N = 5):
     L[1:5, 1:5] = Q
     L[5:7, 5:7] = R
 
-    L_final = np.zeros( (2*n+1, 2*n+1) )
-    L_final[1:5, 1:5] = Q
-    L_final[5:7, 5:7] = R
-    L_final[7:11, 7:11] = Q_final
     # make double AL, AR matrices
     AL = np.hstack( (A,B) )
     AR = -np.hstack( ( np.eye(4), np.zeros((4,2)) ) )
@@ -59,27 +55,26 @@ def make_a_simple_lqr_test(N = 5):
     # add vertices
     prog = MathematicalProgram()
     for i in range(N+1):
-        v = Vertex(str(i), prog, n, PSD_QUADRATIC) # TODO: fix me
+        v = Vertex(str(i), prog, n, PSD_ON_STATE, 4) # TODO: fix me
         # v = Vertex(str(i), prog, n, PSD) # TODO: fix me
         vertices.append(v)
 
     # add edges
     for i in range(N):
         e = Edge(vertices[i], vertices[i+1])
-        if i == N-1:
-            e.set_cost(L_final)
         e.set_cost(L)
         e.add_linear_constraints( AL, AR )
-        # e.lqr_s_procedure(prog, A, B, Q, R)
-        e.s_procedure(prog, A, B)
+        e.lqr_s_procedure(prog, A, B, Q, R)
+        # e.s_procedure(prog, A, B)
         edges.append(e)
 
     box_lb, box_ub = -1*np.ones(4), 1*np.ones(4)
 
     # maximize potential over the integral
-    cost = vertices[0].lqr_integral_over_first_k_states( box_lb, box_ub, 4 )
+    cost = vertices[0].cost_of_integral_over_the_state( box_lb, box_ub)
     # cost = vertices[0].cost_at_point( np.array([3,0,3,0,0,0]) )
     prog.AddLinearCost(-cost)
+    prog.AddLinearConstraint(-cost>=-1000)
     prog.AddLinearConstraint( eq(vertices[-1].Q[:4, :4], Q_final) )
 
     timer = timeit()
@@ -88,21 +83,22 @@ def make_a_simple_lqr_test(N = 5):
     print( solution.is_success() )
     print( solution.get_optimal_cost() )
 
-    S = np.zeros( (4,4) )
-    for i in range(N+1):
-        rounding = 10
-        INFO("S at step ", N-i, ":")
-        print( np.round( solution.GetSolution( vertices[N-i].Q[:4,:4] ), rounding) )
+    if solution.is_success():
+        S = np.zeros( (4,4) )
+        for i in range(N+1):
+            rounding = 10
+            INFO("S at step ", N-i, ":")
+            print( np.round( solution.GetSolution( vertices[N-i].Q[:4,:4] ), rounding) )
 
-        WARN( "True at step ", N-i, ":")
-        WARN(np.round(S, rounding))
-        S = Q + A.T @ S @ A - (A.T @ S @ B) @ np.linalg.inv(R + B.T @ S @ B ) @ (B.T @ S @ A)
+            WARN( "True at step ", N-i, ":")
+            WARN(np.round(S, rounding))
+            S = Q + A.T @ S @ A - (A.T @ S @ B) @ np.linalg.inv(R + B.T @ S @ B ) @ (B.T @ S @ A)
         
 
         
 
 
 if __name__ == "__main__":
-    make_a_simple_lqr_test(7)
+    make_a_simple_lqr_test(20)
     
 
