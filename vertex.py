@@ -40,12 +40,22 @@ class Vertex:
         #   [ r   Q  ] 
         # P(x) = x.T Q x + 2 r.T x + s
 
-        self.Q = prog.NewSymmetricContinuousVariables(self.n, "Q_" + self.name)
+        
         # make potential quadratic if it's used for HJB and cost to go
         if pot_type == PSD:
+            self.Q = prog.NewSymmetricContinuousVariables(self.n, "Q_" + self.name)
             prog.AddPositiveSemidefiniteConstraint(self.Q)
         elif pot_type == PSD_WITH_IDENTITY:
+            self.Q = prog.NewSymmetricContinuousVariables(self.n, "Q_" + self.name)
             prog.AddPositiveSemidefiniteConstraint(self.Q + np.eye(self.n)) 
+        elif PSD_QUADRATIC:
+            Q = prog.NewSymmetricContinuousVariables(4, "Q_" + self.name)
+            prog.AddPositiveSemidefiniteConstraint(Q) 
+            self.Q = np.vstack((
+                np.hstack( (Q, np.zeros((4,2))) ),
+                np.hstack( (np.zeros((2,4)), np.zeros((2,2)) ) )
+            ))
+
 
         if pot_type == PSD_QUADRATIC:
             # if quadratic, potential is P(x) = x.T Q x
@@ -75,15 +85,24 @@ class Vertex:
         temp_prog = MathematicalProgram()
         x_vec = temp_prog.NewIndeterminates(n)
         poly = Polynomial(self.evaluate_partial_potential_at_point(x_vec))
-        for i in range(self.n):
+        for i in range(n):
             x_min, x_max, x = lb[i], ub[i], x_vec[i]
             integral_of_poly = poly.Integrate(x)
             poly = integral_of_poly.EvaluatePartial({x: x_max}) - integral_of_poly.EvaluatePartial({x:x_min})
         return poly.ToExpression()
-        # if solution is None:
-        #     return poly.ToExpression()
-        # else:
-        #     return solution.GetSolution(poly)
+    
+    def lqr_integral_over_first_k_states(self, lb:npt.NDArray, ub:npt.NDArray, k:int):
+        assert k == len(lb) == len(ub)
+        temp_prog = MathematicalProgram()
+        x_vec = temp_prog.NewIndeterminates(k).reshape(k,1)
+
+        poly = Polynomial( (x_vec.T @ self.Q[:k, :k] @ x_vec)[0,0] )
+
+        for i in range(k):
+            x_min, x_max, x = lb[i], ub[i], x_vec[i][0]
+            integral_of_poly = poly.Integrate(x)
+            poly = integral_of_poly.EvaluatePartial({x: x_max}) - integral_of_poly.EvaluatePartial({x:x_min})
+        return poly.ToExpression()
 
     def make_multiplier_terms(self, lambda_e:npt.NDArray, left:bool):
         return 0

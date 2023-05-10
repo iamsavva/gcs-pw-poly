@@ -2,20 +2,11 @@ import typing as T
 
 import numpy as np
 import numpy.typing as npt
-import scipy as sp
-
-from matplotlib import pyplot as plt
-from matplotlib import cm
-from matplotlib.ticker import LinearLocator
 
 from pydrake.solvers import (  
     MathematicalProgram,
-    MathematicalProgramResult,
     Solve,
 )
-from pydrake.symbolic import Polynomial, Variable, Variables
-
-from pydrake.math import eq, le, ge
 
 from util import timeit
 from vertex import Vertex, BoxVertex, PolytopeVertex, EllipsoidVertex

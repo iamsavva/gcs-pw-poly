@@ -73,25 +73,53 @@ class Edge:
             for i in range(m):
                 (Al, Ar) = self.linear_constraints[i]
                 m_mat = np.vstack((
-                    np.hstack((np.zeros((0,0)), Al.T, Ar.T)),
+                    np.hstack(( np.zeros((1,1)), Al.T, Ar.T)),
                     np.hstack((Al, np.zeros((n,n)), np.zeros((n,n)))),
                     np.hstack((Ar, np.zeros((n,n)), np.zeros((n,n))))
                 ))
                 res += m_mat * self.d_e[i]
         return res
     
+    def add_linear_constraints_equality_constraint(self, A, B, prog):
+        n = 4
+        m = 2
+        d = 13
+
+        T = np.hstack( (np.zeros((n,1)), A, B, -np.eye(n), np.zeros((n,m)) )) 
+        M = T.T @ T
+
+        multiplier = prog.NewContinuousVariables(n, "m_"+ self.name)
+        M = T.T @ np.diag(multiplier) @ T
+        return M
+    
+        # multiplier = prog.NewContinuousVariables(1, "m_"+ self.name)[0]
+        # return M * multiplier
+
+        # row1 = np.zeros( (1,d) )
+        # row2 = np.hstack( (np.zeros((n,1)), A.T @ A , A.T @ B, -A.T, np.zeros((n,m))) )
+        # row3 = np.hstack( (np.zeros((m,1)), B.T @ A , B.T @ B, -B.T, np.zeros((m,m))) )
+        # row4 = np.hstack( (np.zeros((n,1)), -A , -B, np.eye(n), np.zeros((n,m))) )
+        # row5 = np.zeros( (m,d) )
+        # M = np.vstack( (row1, row2, row3, row4, row5) )
+
+        multiplier = prog.NewContinuousVariables(1, "m_"+ self.name)[0]
+        return M * multiplier
+    
     def get_left_right_set_multipliers(self, prog: MathematicalProgram):
+        res = 0
+
         left_m_deg = self.left.multiplier_deg()
         right_m_deg = self.right.multiplier_deg()
 
-        self.lambda_e_left = prog.NewContinuousVariables(left_m_deg, "l1_" + self.name)
-        self.lambda_e_right = prog.NewContinuousVariables(right_m_deg, "l2" + self.name)
-
-        prog.AddLinearConstraint( ge(self.lambda_e_left, np.zeros(left_m_deg) ) )
-        prog.AddLinearConstraint( ge(self.lambda_e_right, np.zeros(right_m_deg) ) )
-
-        res = 0
-        res = self.left.make_multiplier_terms(self.lambda_e_left, left=True) + self.right.make_multiplier_terms(self.lambda_e_right, left=False)
+        if left_m_deg > 0:
+            self.lambda_e_left = prog.NewContinuousVariables(left_m_deg, "l1_" + self.name)
+            prog.AddLinearConstraint( ge(self.lambda_e_left, np.zeros(left_m_deg) ) )
+            res = res + self.left.make_multiplier_terms(self.lambda_e_left, left=True)
+        
+        if right_m_deg > 0:
+            self.lambda_e_right = prog.NewContinuousVariables(right_m_deg, "l2" + self.name)
+            prog.AddLinearConstraint( ge(self.lambda_e_right, np.zeros(right_m_deg) ) )
+            res = res + self.right.make_multiplier_terms(self.lambda_e_right, left=False)
         return res
 
 
@@ -112,11 +140,28 @@ class Edge:
             np.hstack( (rr,      O_n,    Qr ) ) 
             ))
     
-    def s_procedure(self, prog:MathematicalProgram):
+    def lqr_s_procedure(self, prog:MathematicalProgram, A, B, Q, R):
+        Sn = self.left.Q[:4,:4]
+        Sn1 = self.right.Q[:4,:4]
+
+        Omn = np.zeros((2,4))
+        Omm = np.zeros((2,2))
+
+        # T = np.hstack( () )
+        
+        Left = np.vstack( (np.hstack((Sn,Omn.T)), np.hstack((Omn, Omm)) )) - np.vstack(( np.hstack( (A.T@Sn1@A, A.T@Sn1@B) ), np.hstack( (B.T@Sn1@A, B.T@Sn1@B) ) ))
+        Right = np.vstack( (np.hstack( (Q, Omn.T) ), np.hstack( (Omn, R) )))
+        prog.AddPositiveSemidefiniteConstraint(Right-Left)
+    
+    def s_procedure(self, prog:MathematicalProgram, A=None, B=None):
         res = 0
         res = self.get_cost() + self.get_potential_diff()
+
         res = res + self.get_left_right_set_multipliers(prog)
         res = res + self.get_linear_constraint_multiplier_terms(prog)
+        if A is not None and B is not None:
+            res = res + self.add_linear_constraints_equality_constraint(A, B, prog)
+
         prog.AddPositiveSemidefiniteConstraint(res)
 
 
