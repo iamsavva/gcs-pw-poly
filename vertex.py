@@ -39,6 +39,12 @@ class Vertex:
 
         self.define_potential(prog, pot_type)
 
+    def is_point_inside(self, point: npt.NDArray):
+        return True
+    
+    def is_state_inside(self, state: npt.NDArray):
+        return True
+
     def define_potential(self, prog: MathematicalProgram, pot_type:str):
         # P = 
         #   [ P_11  P_1  ] 
@@ -157,6 +163,10 @@ class PolytopeVertex(Vertex):
         self.b = b.reshape(m,1)
         self.m = m
 
+    def is_point_inside(self, point: npt.NDArray):
+        assert point.shape == (self.n, 1)
+        return np.all( self.A @ point <= self.b)
+
     def make_multiplier_terms(self, lambda_e:npt.NDArray, left:bool = None):
         # NOTE: for function g(x) <= 0 and lambda >= 0, returns lambda.T g(x).
         # here g(x) = Ax - b.
@@ -215,6 +225,10 @@ class BoxVertex(PolytopeVertex):
         super(BoxVertex, self).__init__(name, prog, A, b, pot_type, state_dim, x_star)
         # define center
         self.center = (self.lb+self.ub)/2.0
+
+    def is_state_inside(self, state: npt.NDArray):
+        assert state.shape == (self.state_dim, 1)
+        return np.all(self.lb[:self.state_dim] <= state) and np.all(state <= self.ub[:self.state_dim])
 
     def make_set_intersection_multiplier_terms(self, v: "BoxVertex", lambda_e = npt.NDArray):
         # make new lb ub matrices
@@ -283,6 +297,10 @@ class EllipsoidVertex(Vertex):
         self.A = np.linalg.inv(B)
         # {x | (x-center).T G (x-center) <= 1 }
         self.G = self.A.T @ self.A
+
+    def is_point_inside(self, point: npt.NDArray):
+        assert point.shape == (self.n, 1)
+        return np.all( (point-self.center).T @ self.G @ (point-self.center) <= 1 )
 
     def cost_at_center(self, solution:MathematicalProgramResult = None):
         x = self.center

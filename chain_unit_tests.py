@@ -103,3 +103,10 @@ def make_simple_chain_point_to_point_test():
             test_simple_ellipsoid_chain(n, num_vertices, False)
     YAY("Passed simple chain-graph point to point unit tests.")
 
+    prog = MathematicalProgram()
+    v = BoxVertex("", prog, np.zeros(3), 2*np.ones(3))
+    assert v.is_point_inside( np.ones((3,1)) )
+    v = EllipsoidVertex("", prog, np.zeros(3), np.eye(3))
+    assert v.is_point_inside( np.zeros((3,1)) )
+    YAY("Passed set membership tests.")
+

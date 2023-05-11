@@ -217,6 +217,12 @@ class LinearDynamicsEdge:
         return res
 
     def s_procedure(self, prog:MathematicalProgram, A, B, Q, R):
+        self.A = A
+        self.B = B
+        self.Q_cost = Q
+        self.R_cost = R
+        self.x_star = self.left.x_star
+
         state_dim = self.state_dim
         control_dim = self.control_dim
         full_dim = state_dim + control_dim + 1
