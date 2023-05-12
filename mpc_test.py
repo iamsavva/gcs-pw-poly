@@ -24,8 +24,8 @@ from edge import LinearDynamicsEdge
 
 
 def get_LRAB_vertex_boundaries(letter: str):
-    control_limit = 100
-    x_dot = 5
+    control_limit = 30
+    x_dot = 1
     u_lb, u_ub = -control_limit * np.ones((2, 1)), control_limit * np.ones((2, 1))
     
     if letter == "L":
@@ -47,10 +47,27 @@ def get_LRAB_vertex_boundaries(letter: str):
     return lb, ub
 
 def get_LRAB_diag_vertex_boundaries(letter: str):
-    control_limit = 50
-    x_dot = 5
+    control_limit = 30
+    x_dot = 3
     u_lb, u_ub = -control_limit * np.ones((2, 1)), control_limit * np.ones((2, 1))
     
+    # if letter == "LL":
+    #     x_lb, x_ub = np.array([0, -x_dot, 1, -x_dot]), np.array([2, x_dot, 5, x_dot])
+    # elif letter == "RR":
+    #     x_lb, x_ub = np.array([4, -x_dot, 1, -x_dot]), np.array([6, x_dot, 5, x_dot])
+    # elif letter == "BB":
+    #     x_lb, x_ub = np.array([1, -x_dot, 0, -x_dot]), np.array([5, x_dot, 2, x_dot])
+    # elif letter == "AA":
+    #     x_lb, x_ub = np.array([1, -x_dot, 4, -x_dot]), np.array([5, x_dot, 6, x_dot])
+    # elif letter == "LA":
+    #     x_lb, x_ub = np.array([0, -x_dot, 4, -x_dot]), np.array([2, x_dot, 6, x_dot])
+    # elif letter == "AR":
+    #     x_lb, x_ub = np.array([4, -x_dot, 4, -x_dot]), np.array([6, x_dot, 6, x_dot])
+    # elif letter == "LB":
+    #     x_lb, x_ub = np.array([0, -x_dot, 0, -x_dot]), np.array([2, x_dot, 2, x_dot])
+    # elif letter == "BR":
+    #     x_lb, x_ub = np.array([4, -x_dot, 0, -x_dot]), np.array([6, x_dot, 2, x_dot])
+
     if letter == "LL":
         x_lb, x_ub = np.array([0, -x_dot, 2, -x_dot]), np.array([2, x_dot, 4, x_dot])
     elif letter == "RR":
@@ -79,12 +96,13 @@ def get_LRAB_diag_vertex_boundaries(letter: str):
 def make_a_bigger_mpc_test(N=10, verbose=False, dt = 0.1, dumb_policy=False):
     assert N >= 2, "need at least 2 horizon steps"
     # a 2d double integrator, goal at 0
+
     # LQR costs
-    Q = np.eye(4) * 5
+    Q = np.eye(4) * 3
     Q[1,1] = Q[1,1]*0.1
     Q[3,3] = Q[3,3]*0.1
     R = np.eye(2) * 1
-    Q_final = Q * 1
+    Q_final = Q * 2
 
     # linear discrete double integrator dynamics
     A = np.eye(4)
@@ -126,26 +144,61 @@ def make_a_bigger_mpc_test(N=10, verbose=False, dt = 0.1, dumb_policy=False):
         for v in vertices[n]:
             for w in vertices[n + 1]:
                 add_me = False
-                if "LL" in v.name and ("LL" in w.name or "LB" in w.name or "LA" in w.name):
+                # if "LL" in v.name and ("LL" in w.name or "LB" in w.name or "LA" in w.name or "BB" in w.name or "AA" in w.name):
+                #     add_me = True
+                # if "LA" in v.name and ("LA" in w.name or "LL" in w.name or "AA" in w.name):
+                #     add_me = True
+                # if "AA" in v.name and ("LA" in w.name or "AA" in w.name or "AR" in w.name or "LL" in w.name or "RR" in w.name):
+                #     add_me = True
+                # if "AR" in v.name and ("AA" in w.name or "AR" in w.name or "RR" in w.name):
+                #     add_me = True
+                # if "RR" in v.name and ("AR" in w.name or "RR" in w.name or "BR" in w.name or "BB" in w.name or "AA" in w.name):
+                #     add_me = True
+                # if "BR" in v.name and ("RR" in w.name or "BR" in w.name or "BB" in w.name):
+                #     add_me = True
+                # if "BB" in v.name and ("BR" in w.name or "BB" in w.name or "LB" in w.name or "LL" in w.name or "RR" in w.name):
+                #     add_me = True
+                # if "LB" in v.name and ("BB" in w.name or "LB" in w.name or "LL" in w.name):
+                #     add_me = True
+                
+                if "LL" in v.name and ("LL" in w.name or "LB" in w.name):
                     add_me = True
-                if "LA" in v.name and ("LA" in w.name or "LL" in w.name or "AA" in w.name):
+                if "LA" in v.name and ("LA" in w.name or "LL" in w.name):
                     add_me = True
-                if "AA" in v.name and ("LA" in w.name or "AA" in w.name or "AR" in w.name):
+                if "AA" in v.name and ("LA" in w.name or "AA" in w.name):
                     add_me = True
                 if "AR" in v.name and ("AA" in w.name or "AR" in w.name or "RR" in w.name):
                     add_me = True
-                if "RR" in v.name and ("AR" in w.name or "RR" in w.name or "BR" in w.name):
+                if "RR" in v.name and ("RR" in w.name or "BR" in w.name):
                     add_me = True
-                if "BR" in v.name and ("RR" in w.name or "BR" in w.name or "BB" in w.name):
+                if "BR" in v.name and ("BR" in w.name or "BB" in w.name):
                     add_me = True
-                if "BB" in v.name and ("BR" in w.name or "BB" in w.name or "LB" in w.name):
+                if "BB" in v.name and ("BB" in w.name or "LB" in w.name):
                     add_me = True
-                if "LB" in v.name and ("BB" in w.name or "LB" in w.name or "LL" in w.name):
+                if "LB" in v.name and ("LB" in w.name):
                     add_me = True
+
+                # if "LL" in v.name and ("LL" in w.name or "LB" in w.name or "LA" in w.name):
+                #     add_me = True
+                # if "LA" in v.name and ("LA" in w.name or "LL" in w.name or "AA" in w.name):
+                #     add_me = True
+                # if "AA" in v.name and ("LA" in w.name or "AA" in w.name or "AR" in w.name):
+                #     add_me = True
+                # if "AR" in v.name and ("AA" in w.name or "AR" in w.name or "RR" in w.name):
+                #     add_me = True
+                # if "RR" in v.name and ("AR" in w.name or "RR" in w.name or "BR" in w.name):
+                #     add_me = True
+                # if "BR" in v.name and ("RR" in w.name or "BR" in w.name or "BB" in w.name):
+                #     add_me = True
+                # if "BB" in v.name and ("BR" in w.name or "BB" in w.name or "LB" in w.name):
+                #     add_me = True
+                # if "LB" in v.name and ("BB" in w.name or "LB" in w.name or "LL" in w.name):
+                #     add_me = True
                 
                 if add_me:
                     e = LinearDynamicsEdge(v, w)
                     e.s_procedure(prog, A, B, Q, R, intersections=False)
+                    # e.s_procedure(prog, A, B, Q, R, intersections=True)
                     edges.append(e)
 
     # final cost_to_go is Q_final
@@ -165,14 +218,23 @@ def make_a_bigger_mpc_test(N=10, verbose=False, dt = 0.1, dumb_policy=False):
     else:
         for v in vertices[-1]:
             prog.AddLinearConstraint(eq(v.Q[:state_dim, :state_dim], Q_final))
-            prog.AddLinearConstraint(eq(v.r[:state_dim], -Q_final @ x_star))
-            prog.AddLinearConstraint(v.s[0,0] == (x_star.T @ Q_final @ x_star))
+            # prog.AddLinearConstraint(eq(v.r[:state_dim], -Q_final @ x_star))
+            # prog.AddLinearConstraint(v.s[0,0] == (x_star.T @ Q_final @ x_star))
+        # for i in range(len(vertices)-1, -1, -1):
+        #     if i < 3:
+        #         layer = vertices[i]
+        #         for v in layer:
+        #             # if v.name in ("0AR", "0AA", "0RR"):
+        #             #     prog.AddLinearCost(-v.cost_of_integral_over_the_state())
+        #             prog.AddLinearCost(-v.cost_of_integral_over_the_state())
 
     # add cost from all initial sets
     for v in vertices[0]:
         if v.name in ("0AR"):
-# if v.name in ("0AR", "0AA", "0RR"):
-            prog.AddLinearCost(-v.cost_of_integral_over_the_state())
+            prog.AddLinearCost(-v.cost_at_center())
+        # if v.name in ("0AR", "0AA", "0RR"):
+            # prog.AddLinearCost(-v.cost_of_integral_over_the_state())
+    
 
 
     timer = timeit()
@@ -234,17 +296,18 @@ def make_a_simple_mpc_test(N=10, verbose=False, dt = 0.1, dumb_policy=False):
         for v in vertices[n]:
             for w in vertices[n + 1]:
                 add_me = False
-                if "L" in v.name and "R" not in w.name:
+                if "L" in v.name and "L" in w.name:
                     add_me = True
                 if "R" in v.name and "L" not in w.name:
                     add_me = True
-                if "B" in v.name and "A" not in w.name:
+                if "B" in v.name and "B" in w.name:
                     add_me = True
                 if "A" in v.name and "B" not in w.name:
                     add_me = True
+                    add_me = True
                 if add_me:
                     e = LinearDynamicsEdge(v, w)
-                    e.s_procedure(prog, A, B, Q, R)
+                    e.s_procedure(prog, A, B, Q, R, intersections = True)
                     edges.append(e)
 
     # final cost_to_go is Q_final
@@ -268,10 +331,18 @@ def make_a_simple_mpc_test(N=10, verbose=False, dt = 0.1, dumb_policy=False):
         prog.AddLinearConstraint(v.s[0,0] == (x_star.T @ Q_final @ x_star))
 
     # add cost from all initial sets
-    for v in vertices[0]:
-        if v.name in ("0A", "0R"):
-            prog.AddLinearCost(-v.cost_of_integral_over_the_state())
-            # prog.AddLinearCost(-v.cost_())
+    # for v in vertices[0]:
+    #     # if v.name in ("0A", "0R"):
+    #     if v.name in ("0A"):
+    #         # prog.AddLinearCost(-v.cost_at_center())
+    #         prog.AddLinearCost(-v.cost_of_integral_over_the_state())
+    #         # prog.AddLinearCost(-v.cost_())
+
+    for i in range(len(vertices)-1, -1, -1):
+        layer = vertices[i]
+        if i < 9:
+            for v in layer:
+                prog.AddLinearCost(-v.cost_of_integral_over_the_state())
 
 
     timer = timeit()

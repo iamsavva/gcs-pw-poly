@@ -37,6 +37,7 @@ def make_a_path_from_policy(
     initial_state: npt.NDArray,
     policy = QP_POLICY,
     pick_lowest_cost = True,
+    with_replacement = False
 ):
     N = len(vertices) - 1
     state = initial_state.reshape(len(initial_state), 1)
@@ -52,6 +53,9 @@ def make_a_path_from_policy(
             break
     assert vertex is not None, ERROR("sate is inside no vertex: ", state)
     total_cost = 0
+
+    if with_replacement:
+        N = 20
 
     for i in range(N - 1):
         # find all edges out of current vertex
@@ -86,6 +90,7 @@ def make_a_path_from_policy(
                 prog.AddLinearConstraint( eq( y, A @state + B @ u ) ) 
                 # intersect left and right boxes (i don't wanna clip corners)
                 lb, ub = e.left.get_box_intersection( e.right )
+                # lb, ub = e.right.lb[:vertex.state_dim], e.right.ub[:vertex.state_dim]
                 prog.AddLinearConstraint( le( lb[:vertex.state_dim], y ))
                 prog.AddLinearConstraint( le( y, ub[:vertex.state_dim] ))
                 
@@ -120,9 +125,10 @@ def make_a_path_from_policy(
 
         # assert best_v.is_state_inside(state), ERROR( state.T, best_v.lb.T, best_v.ub.T )
 
-        # for v in vertices[0]:
-        #     if v.name[-2:] == best_v.name[-2:]:
-        #         best_v = v
+        if with_replacement:
+            for v in vertices[0]:
+                if v.name[-2:] == best_v.name[-2:]:
+                    best_v = v
 
         vertex = best_v
         states.append(state)
@@ -135,8 +141,9 @@ def plot_policy_realizations_from_state( vertices: T.List[T.List[Vertex]],
     initial_states: npt.NDArray,
     policy:str = QP_POLICY,
     pick_lowest_cost = True,
-    xlim=[-5,5], ylim =[-5,5] ):
-    paths = [ make_a_path_from_policy(vertices, edges, solution, state, policy, pick_lowest_cost) for state in initial_states ]
+    xlim=[-5,5], ylim =[-5,5],
+    with_replacement = False):
+    paths = [ make_a_path_from_policy(vertices, edges, solution, state, policy, pick_lowest_cost, with_replacement) for state in initial_states ]
 
     fig, ax = plt.subplots()
     fig.set_figheight(5)

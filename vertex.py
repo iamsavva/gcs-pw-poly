@@ -80,7 +80,9 @@ class Vertex:
             # PSD on state only -- on control inputs it's just 0
             Q = prog.NewSymmetricContinuousVariables(self.state_dim, "Q_" + self.name)
             if Q_cost is not None:
-                prog.AddPositiveSemidefiniteConstraint(Q + Q_cost)
+                prog.AddPositiveSemidefiniteConstraint(Q  + Q_cost)
+                # (B, R) = Q_cost
+                # prog.AddPositiveSemidefiniteConstraint(B.T @ Q @ B + R)
             else:
                 prog.AddPositiveSemidefiniteConstraint(Q)
 
@@ -352,6 +354,8 @@ class BoxVertex(PolytopeVertex):
         k = self.state_dim
         lb = self.lb[:k]
         ub = self.ub[:k]
+        # lb[1], lb[3] = -0.1, -0.1
+        # ub[1], ub[3] = 0.1, 0.1
 
         temp_prog = MathematicalProgram()
         x_vec = temp_prog.NewIndeterminates(k).reshape(k, 1)
