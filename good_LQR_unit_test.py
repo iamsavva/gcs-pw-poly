@@ -20,7 +20,7 @@ from pydrake.math import eq, le, ge
 from util import timeit, INFO, YAY, ERROR, WARN
 from vertex import Vertex, BoxVertex, PolytopeVertex, EllipsoidVertex
 from vertex import FREE, PSD, PSD_ON_STATE, PSD_WITH_IDENTITY
-from edge import LinearDynamicsEdge
+from dynamics_edge import LinearDynamicsEdge
 
 
 def make_a_simple_lqr_test(N=20, verbose=False, dt = 0.1):

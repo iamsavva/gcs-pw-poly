@@ -79,10 +79,11 @@ class Vertex:
             # state is 1 x u, except we are only interested in the cost to go acting on 1 and x alone.
             # PSD on state only -- on control inputs it's just 0
             Q = prog.NewSymmetricContinuousVariables(self.state_dim, "Q_" + self.name)
+            
             if Q_cost is not None:
-                prog.AddPositiveSemidefiniteConstraint(Q  + Q_cost)
-                # (B, R) = Q_cost
-                # prog.AddPositiveSemidefiniteConstraint(B.T @ Q @ B + R)
+                # prog.AddPositiveSemidefiniteConstraint(Q  + Q_cost)
+                (B, R) = Q_cost
+                prog.AddPositiveSemidefiniteConstraint(B.T @ Q @ B + R)
             else:
                 prog.AddPositiveSemidefiniteConstraint(Q)
 
@@ -287,6 +288,13 @@ class BoxVertex(PolytopeVertex):
         # define center
         self.center = (self.lb + self.ub) / 2.0
 
+    def get_x_polytope(self):
+        lb = self.lb[:self.state_dim]
+        ub = self.ub[:self.state_dim]
+        A = np.vstack((-np.eye(self.state_dim), np.eye(self.state_dim)))
+        b = np.vstack((-lb, ub))
+        return A, b
+
     def is_state_inside(self, state: npt.NDArray):
         assert state.shape == (self.state_dim, 1), ERROR( state)
         return np.all(self.lb[: self.state_dim] <= state) and np.all(
@@ -349,13 +357,32 @@ class BoxVertex(PolytopeVertex):
         return self.cost_of_integral_over_a_box(
             self.lb.reshape(self.n), self.ub.reshape(self.n)
         )
+    
+    def cost_of_slim_integral_over_the_state(self):
+        k = self.state_dim
+        lb = self.lb[:k]
+        ub = self.ub[:k]
+        lb[1], lb[3] = -0.1, -0.1
+        ub[1], ub[3] = 0.1, 0.1
+
+        temp_prog = MathematicalProgram()
+        x_vec = temp_prog.NewIndeterminates(k).reshape(k, 1)
+
+        poly = Polynomial(self.evaluate_partial_potential_at_a_state(x_vec))
+
+        for i in range(k):
+            x_min, x_max, x = lb[i], ub[i], x_vec[i][0]
+            integral_of_poly = poly.Integrate(x)
+            poly = integral_of_poly.EvaluatePartial(
+                {x: x_max}
+            ) - integral_of_poly.EvaluatePartial({x: x_min})
+        poly = poly / 1000
+        return poly.ToExpression()
 
     def cost_of_integral_over_the_state(self):
         k = self.state_dim
         lb = self.lb[:k]
         ub = self.ub[:k]
-        # lb[1], lb[3] = -0.1, -0.1
-        # ub[1], ub[3] = 0.1, 0.1
 
         temp_prog = MathematicalProgram()
         x_vec = temp_prog.NewIndeterminates(k).reshape(k, 1)

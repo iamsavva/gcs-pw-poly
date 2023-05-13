@@ -20,7 +20,7 @@ from pydrake.math import eq, le, ge
 from util import timeit, INFO, YAY, ERROR, WARN
 from vertex import Vertex, BoxVertex, PolytopeVertex, EllipsoidVertex
 from vertex import FREE, PSD, PSD_ON_STATE, PSD_WITH_IDENTITY
-from edge import LinearDynamicsEdge
+from dynamics_edge import LinearDynamicsEdge
 
 
 def get_LRAB_vertex_boundaries(letter: str):
@@ -47,7 +47,7 @@ def get_LRAB_vertex_boundaries(letter: str):
     return lb, ub
 
 def get_LRAB_diag_vertex_boundaries(letter: str):
-    control_limit = 30
+    control_limit = 10
     x_dot = 3
     u_lb, u_ub = -control_limit * np.ones((2, 1)), control_limit * np.ones((2, 1))
     
@@ -94,11 +94,11 @@ def get_LRAB_diag_vertex_boundaries(letter: str):
 
 
 def make_a_bigger_mpc_test(N=10, verbose=False, dt = 0.1, dumb_policy=False):
-    assert N >= 2, "need at least 2 horizon steps"
+    # assert N >= 2, "need at least 2 horizon steps"
     # a 2d double integrator, goal at 0
 
     # LQR costs
-    Q = np.eye(4) * 3
+    Q = np.eye(4) * 5
     Q[1,1] = Q[1,1]*0.1
     Q[3,3] = Q[3,3]*0.1
     R = np.eye(2) * 1
@@ -126,6 +126,7 @@ def make_a_bigger_mpc_test(N=10, verbose=False, dt = 0.1, dumb_policy=False):
     # add vertices
     prog = MathematicalProgram()
     set_names = ["LL", "RR", "BB", "AA", "LA", "AR", "LB", "BR"]
+    # set_names = ["RR", "BB", "LB", "BR"]
 
     for n in range(N + 1):
         # for each layer
@@ -133,9 +134,8 @@ def make_a_bigger_mpc_test(N=10, verbose=False, dt = 0.1, dumb_policy=False):
         for set_name in set_names:
             # for each vertex in that layer
             lb, ub = get_LRAB_diag_vertex_boundaries(set_name)
-            v = BoxVertex(
-                str(n) + set_name, prog, lb, ub, PSD_ON_STATE, state_dim, x_star, Q
-            )
+            # v = BoxVertex( str(n) + set_name, prog, lb, ub, PSD_ON_STATE, state_dim, x_star, Q  )
+            v = BoxVertex( str(n) + set_name, prog, lb, ub, PSD_ON_STATE, state_dim, x_star, (B,R)  )
             new_layer.append(v)
         vertices.append(new_layer)
 
@@ -177,28 +177,10 @@ def make_a_bigger_mpc_test(N=10, verbose=False, dt = 0.1, dumb_policy=False):
                     add_me = True
                 if "LB" in v.name and ("LB" in w.name):
                     add_me = True
-
-                # if "LL" in v.name and ("LL" in w.name or "LB" in w.name or "LA" in w.name):
-                #     add_me = True
-                # if "LA" in v.name and ("LA" in w.name or "LL" in w.name or "AA" in w.name):
-                #     add_me = True
-                # if "AA" in v.name and ("LA" in w.name or "AA" in w.name or "AR" in w.name):
-                #     add_me = True
-                # if "AR" in v.name and ("AA" in w.name or "AR" in w.name or "RR" in w.name):
-                #     add_me = True
-                # if "RR" in v.name and ("AR" in w.name or "RR" in w.name or "BR" in w.name):
-                #     add_me = True
-                # if "BR" in v.name and ("RR" in w.name or "BR" in w.name or "BB" in w.name):
-                #     add_me = True
-                # if "BB" in v.name and ("BR" in w.name or "BB" in w.name or "LB" in w.name):
-                #     add_me = True
-                # if "LB" in v.name and ("BB" in w.name or "LB" in w.name or "LL" in w.name):
-                #     add_me = True
                 
                 if add_me:
                     e = LinearDynamicsEdge(v, w)
                     e.s_procedure(prog, A, B, Q, R, intersections=False)
-                    # e.s_procedure(prog, A, B, Q, R, intersections=True)
                     edges.append(e)
 
     # final cost_to_go is Q_final
@@ -218,8 +200,8 @@ def make_a_bigger_mpc_test(N=10, verbose=False, dt = 0.1, dumb_policy=False):
     else:
         for v in vertices[-1]:
             prog.AddLinearConstraint(eq(v.Q[:state_dim, :state_dim], Q_final))
-            # prog.AddLinearConstraint(eq(v.r[:state_dim], -Q_final @ x_star))
-            # prog.AddLinearConstraint(v.s[0,0] == (x_star.T @ Q_final @ x_star))
+            prog.AddLinearConstraint(eq(v.r[:state_dim], -Q_final @ x_star))
+            prog.AddLinearConstraint(v.s[0,0] == (x_star.T @ Q_final @ x_star))
         # for i in range(len(vertices)-1, -1, -1):
         #     if i < 3:
         #         layer = vertices[i]
@@ -228,14 +210,26 @@ def make_a_bigger_mpc_test(N=10, verbose=False, dt = 0.1, dumb_policy=False):
         #             #     prog.AddLinearCost(-v.cost_of_integral_over_the_state())
         #             prog.AddLinearCost(-v.cost_of_integral_over_the_state())
 
+    for layer in vertices:
+        for v in layer:
+            # print(v.name)
+            prog.AddLinearCost(-v.cost_of_integral_over_the_state())
+        
     # add cost from all initial sets
-    for v in vertices[0]:
-        if v.name in ("0AR"):
-            prog.AddLinearCost(-v.cost_at_center())
-        # if v.name in ("0AR", "0AA", "0RR"):
-            # prog.AddLinearCost(-v.cost_of_integral_over_the_state())
-    
+    # for v in vertices[0]:
+    #     if v.name in ("0AR"):
+    #     if v.name in ("0AR", "0AA", "0RR"):
+    #     if v.name in ("0RR"):
+    #     prog.AddLinearCost(-v.cost_of_integral_over_the_state())
 
+    # for v in vertices[0]:
+    #     # if v.name in ("0RR"):
+    #     # if v.name in ("0AA", "0RR", "0AR"):
+    #     if v.name in ("0AR"):
+    #         prog.AddLinearCost(-v.cost_of_integral_over_the_state())
+        # if v.name in ("0AR"):
+            # prog.AddLinearCost(-v.cost_of_slim_integral_over_the_state())
+            # prog.AddLinearCost(-v.cost_at_point( np.array([5,0,5.5,0, 0,0])))
 
     timer = timeit()
     solution = Solve(prog)

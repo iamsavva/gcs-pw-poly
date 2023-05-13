@@ -21,7 +21,7 @@ from pydrake.math import eq, le, ge
 from util import timeit, INFO, YAY, ERROR, WARN
 from vertex import Vertex, BoxVertex, PolytopeVertex, EllipsoidVertex
 from vertex import FREE, PSD, PSD_ON_STATE, PSD_WITH_IDENTITY
-from edge import LinearDynamicsEdge
+from dynamics_edge import LinearDynamicsEdge
 from good_LQR_unit_test import make_a_simple_lqr_test
 
 
@@ -89,14 +89,16 @@ def make_a_path_from_policy(
 
                 prog.AddLinearConstraint( eq( y, A @state + B @ u ) ) 
                 # intersect left and right boxes (i don't wanna clip corners)
-                lb, ub = e.left.get_box_intersection( e.right )
-                # lb, ub = e.right.lb[:vertex.state_dim], e.right.ub[:vertex.state_dim]
+                # lb, ub = e.left.get_box_intersection( e.right )
+
+                lb, ub = e.right.lb[:vertex.state_dim], e.right.ub[:vertex.state_dim]
+
                 prog.AddLinearConstraint( le( lb[:vertex.state_dim], y ))
                 prog.AddLinearConstraint( le( y, ub[:vertex.state_dim] ))
                 
                 u_lb, u_ub = e.left.get_control_bounds()
-                prog.AddLinearConstraint( le( u_lb, u ))
-                prog.AddLinearConstraint( le( u, u_ub ))
+                prog.AddLinearConstraint( le( u_lb*2, u ))
+                prog.AddLinearConstraint( le( u, u_ub*2 ))
 
                 qp_solution = Solve(prog)
                 if qp_solution.is_success():
