@@ -22,7 +22,7 @@ N = 2
 # make more sets
 # what are the costs incurred by each policy?
 
-vertices, edges, solution = make_a_bigger_mpc_test(N = N, verbose = True, dt = dt, dumb_policy = False)
+vertices, edges, solution = make_a_bigger_mpc_test(N = N, verbose = True, dt = dt, lqr_policy = False)
 # for v in vertices[0]:    
     # print(np.round(solution.GetSolution( v.Q[:4,:4]),3))
     # print(np.round(solution.GetSolution( v.r[:4]),3))
@@ -30,7 +30,7 @@ vertices, edges, solution = make_a_bigger_mpc_test(N = N, verbose = True, dt = d
 
 # for e in edges:
 #     print(np.round(solution.GetSolution( e.theta[:5, :5]), 2))
-# vertices, edges, solution = make_a_simple_mpc_test(N = N, verbose = False, dt = dt, dumb_policy = False)
+# vertices, edges, solution = make_a_simple_mpc_test(N = N, verbose = False, dt = dt, lqr_policy = False)
 
 # fig, ax, costs = plot_policy_realizations_from_state(vertices, edges, solution, initial_states, LEAST_SQUARES_POLICY, True, xlim, ylim, with_replacement = False)
 # YAY(costs)

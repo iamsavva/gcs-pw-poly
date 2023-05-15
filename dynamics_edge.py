@@ -82,8 +82,6 @@ class LinearDynamicsEdge:
         A_mats = []
         b_mats = []
 
-        # return self.make_polytope_set_multipliers(prog, self.left.A, self.left.b)
-
         if left_m_deg > 0:
             A_mats.append(self.left.A)
             b_mats.append(self.left.b)
@@ -91,7 +89,6 @@ class LinearDynamicsEdge:
         if right_m_deg > 0:
             C,d = self.right.get_x_polytope()
             C = C @ np.hstack((self.A, self.B))
-            # A_mats.append(np.hstack((C @ self.A, C @ self.B)))
             A_mats.append(C)
             b_mats.append(d)
 
@@ -143,5 +140,6 @@ class LinearDynamicsEdge:
 
         # form the entire matrix
         psd_mat = edge_cost + potential_difference + set_multiplier_terms
+        # psd_mat = edge_cost + potential_difference #+ set_multiplier_terms
 
         prog.AddPositiveSemidefiniteConstraint(psd_mat)

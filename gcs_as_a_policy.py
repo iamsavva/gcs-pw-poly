@@ -78,7 +78,8 @@ def make_a_path_from_policy(
                 cost = (u.T @ R @ u + (A@state + B@u).T @ Sw @ (A@state + B@u) + 2 * rw.T @ (A@state + B@u) + sw)[0,0]
                 # print(u, cost, e.right.name)
                 options.append( (u, cost, e.right) )
-            elif policy == QP_POLICY:
+                
+            else:
                 prog = MathematicalProgram()
                 y = prog.NewContinuousVariables(vertex.state_dim).reshape(vertex.state_dim, 1)
                 u = prog.NewContinuousVariables(vertex.control_dim).reshape(vertex.control_dim, 1)
@@ -99,6 +100,8 @@ def make_a_path_from_policy(
                 u_lb, u_ub = e.left.get_control_bounds()
                 prog.AddLinearConstraint( le( u_lb*2, u ))
                 prog.AddLinearConstraint( le( u, u_ub*2 ))
+                # prog.AddLinearConstraint( le( u_lb*1.2, u ))
+                # prog.AddLinearConstraint( le( u, u_ub*1.2 ))
 
                 qp_solution = Solve(prog)
                 if qp_solution.is_success():
@@ -155,19 +158,29 @@ def plot_policy_realizations_from_state( vertices: T.List[T.List[Vertex]],
     ax.set_xlim(xlim[0], xlim[1])
     ax.set_ylim(ylim[0], ylim[1])
 
-    ax.add_patch(patches.Rectangle( (2,2), 2,2, linewidth=0, edgecolor="black", facecolor="black"))
+    # ax.add_patch(patches.Rectangle( (2,2), 2,2, linewidth=0, edgecolor="black", facecolor="black"))
+    ax.add_patch(patches.Rectangle( (0,2), 4,4, linewidth=0, edgecolor="black", facecolor="black"))
 
     i = 0
     costs = []
+    initial_points_x = []
+    initial_points_y = []
     for (path, cost) in paths:
         costs.append(np.round(cost,3))
         x,y = [], []
+        initial_points_x.append(path[0][0])
+        initial_points_y.append(path[0][2])
         for v in path:
             x.append(v[0]), y.append(v[2])
         ax.plot(x, y, label=str(i), color = "blue", linewidth = 2)
+        ax.scatter(x[0:1], y[0:1], label=str(i), color = "blue", linewidth = 1)
         i+=1
-        for i in range(len(x)):
-            ax.annotate(str(i), (x[i], y[i]))
+        ax.annotate(str(0), (x[0], y[0]))
+        # for i in range(len(x)):
+        # ax.annotate(str(i), (x[i], y[i]))
+    ax.scatter(initial_points_x, initial_points_y, color="blue", linewidth=1)
+        
+        
 
     
     return fig, ax, costs

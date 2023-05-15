@@ -29,8 +29,8 @@ def make_a_simple_lqr_test(N=20, verbose=False, dt = 0.1):
     # LQR costs
     Q = np.eye(4) * 1
     R = np.eye(2) * 1
-    Q_final = np.eye(4) * 2
-    # Q_final = np.zeros( (4,4) )
+    # Q_final = np.eye(4) * 2
+    Q_final = np.zeros( (4,4) )
 
     # linear discrete double integrator dynamics
     A = np.eye(4)
@@ -53,9 +53,8 @@ def make_a_simple_lqr_test(N=20, verbose=False, dt = 0.1):
     # add vertices
     prog = MathematicalProgram()
     for i in range(N + 1):
-        v = Vertex(
-            str(i), prog, full_dim, PSD_ON_STATE, state_dim, x_star
-        )  # TODO: fix me
+        lb,ub = np.array([-3,0,-3,0,0,0]), np.array([3,0,3,0,0,0])
+        v = BoxVertex( str(i), prog, lb,ub, PSD_ON_STATE, state_dim, x_star, (B,R) )
         vertices.append([v])
 
     # add edges
@@ -67,11 +66,11 @@ def make_a_simple_lqr_test(N=20, verbose=False, dt = 0.1):
     box_lb, box_ub = -1 * np.ones(state_dim), 1 * np.ones(state_dim)
 
     # maximize potential over the integral
-    cost = vertices[0][0].cost_of_integral_over_the_state(box_lb, box_ub)
+    cost = vertices[0][0].cost_of_integral_over_the_state()
     prog.AddLinearCost(-cost)
 
     # final cost-to-go is equal to Q_final
-    prog.AddLinearConstraint(eq(vertices[-1][0].Q[:state_dim, :state_dim], Q_final))
+    prog.AddLinearConstraint(eq( vertices[-1][0].Q[:state_dim, :state_dim], Q_final ))
 
     timer = timeit()
     solution = Solve(prog)
@@ -79,6 +78,7 @@ def make_a_simple_lqr_test(N=20, verbose=False, dt = 0.1):
     INFO(solution.is_success(), verbose=verbose)
     INFO(solution.get_optimal_cost(), verbose=verbose)
 
+    assert solution.is_success(), ERROR("Failed to solve!")
     if solution.is_success():
         S = Q_final
         for i in range(N + 1):
@@ -97,9 +97,9 @@ def make_a_simple_lqr_test(N=20, verbose=False, dt = 0.1):
             # )
             # print(np.round(solution.GetSolution(vertices[N - i][0].r[:4]), rounding))
 
-            # assert np.allclose(np.round(S, rounding), pot_PSD, rtol=1e-2), ERROR(
-            #     "MATRICES DON'T MATCH"
-            # )
+            assert np.allclose(np.round(S, rounding), pot_PSD, rtol=1e-2), ERROR(
+                "MATRICES DON'T MATCH"
+            )
 
             S = (
                 Q
