@@ -91,8 +91,9 @@ def make_a_path_from_policy(
                 prog.AddLinearConstraint( eq( y, A @state + B @ u ) ) 
                 # intersect left and right boxes (i don't wanna clip corners)
                 # lb, ub = e.left.get_box_intersection( e.right )
+                ddd = 0.2
 
-                lb, ub = e.right.lb[:vertex.state_dim], e.right.ub[:vertex.state_dim]
+                lb, ub = e.right.lb[:vertex.state_dim]-ddd, e.right.ub[:vertex.state_dim]+ddd
 
                 prog.AddLinearConstraint( le( lb[:vertex.state_dim], y ))
                 prog.AddLinearConstraint( le( y, ub[:vertex.state_dim] ))
@@ -152,14 +153,22 @@ def plot_policy_realizations_from_state( vertices: T.List[T.List[Vertex]],
 
     fig, ax = plt.subplots()
     fig.set_figheight(5)
-    fig.set_figwidth(5)
+    # fig.set_figwidth(5)
     ax.set_xlabel("x")
     ax.set_ylabel("y")
+    ax.set_aspect("equal")
     ax.set_xlim(xlim[0], xlim[1])
     ax.set_ylim(ylim[0], ylim[1])
 
-    # ax.add_patch(patches.Rectangle( (2,2), 2,2, linewidth=0, edgecolor="black", facecolor="black"))
-    ax.add_patch(patches.Rectangle( (0,2), 4,4, linewidth=0, edgecolor="black", facecolor="black"))
+    ax.add_patch(patches.Rectangle( (2,2), 7,2, linewidth=0, edgecolor="black", facecolor="black"))
+    ax.add_patch(patches.Rectangle( (2,4), 2,2, linewidth=0, edgecolor="black", facecolor="black"))
+
+    # ax.add_patch(patches.Rectangle( (0,2), 4,4, linewidth=0, edgecolor="black", facecolor="black"))
+
+    # ax.add_patch(patches.Rectangle( (2,4), 2,2, linewidth=0, edgecolor="black", facecolor="black"))
+
+    # ax.add_patch(patches.Rectangle( (4,4), 2,2, linewidth=0, edgecolor="blue", facecolor="blue"))
+
 
     i = 0
     costs = []
@@ -176,13 +185,7 @@ def plot_policy_realizations_from_state( vertices: T.List[T.List[Vertex]],
         ax.scatter(x[0:1], y[0:1], label=str(i), color = "blue", linewidth = 1)
         i+=1
         ax.annotate(str(0), (x[0], y[0]))
-        # for i in range(len(x)):
-        # ax.annotate(str(i), (x[i], y[i]))
     ax.scatter(initial_points_x, initial_points_y, color="blue", linewidth=1)
-        
-        
-
-    
     return fig, ax, costs
 
 

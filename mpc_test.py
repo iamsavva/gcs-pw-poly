@@ -46,27 +46,39 @@ def get_LRAB_vertex_boundaries(letter: str):
     ub = np.vstack((x_ub, u_ub))
     return lb, ub
 
-def get_LRAB_diag_vertex_boundaries(letter: str):
+def get_set_centers(n):
+    d= 0.2
+    if n == 1:
+        return (1,1), (1,1-d)
+    elif n == 2:
+        return (3,1), (1+2*d,1-d)
+    elif n == 3:
+        return (5,1), (1-d,1-d)
+    elif n == 4:
+        return (5,3), (1-d,1+d)
+    elif n == 5:
+        return (5,5), (1-d,1+d)
+    
+def check_edge(left, right):
+    edges = []
+    for i in range(1,6):
+        edges.append( (i,i) )
+    edges.append( (2,1) )
+    edges.append( (3,2) )
+    edges.append( (4,3) )
+    edges.append( (5,4) )
+    return (left,right) in edges
+
+    
+def get_boundaries(number:int):
     control_limit = 30
     x_dot = 3
     u_lb, u_ub = -control_limit * np.ones((2, 1)), control_limit * np.ones((2, 1))
-    
-    if letter == "LL":
-        x_lb, x_ub = np.array([0, -x_dot, 2, -x_dot]), np.array([2, x_dot, 4, x_dot])
-    elif letter == "RR":
-        x_lb, x_ub = np.array([4, -x_dot, 2, -x_dot]), np.array([6, x_dot, 4, x_dot])
-    elif letter == "BB":
-        x_lb, x_ub = np.array([2, -x_dot, 0, -x_dot]), np.array([4, x_dot, 2, x_dot])
-    elif letter == "AA":
-        x_lb, x_ub = np.array([2, -x_dot, 4, -x_dot]), np.array([4, x_dot, 6, x_dot])
-    elif letter == "LA":
-        x_lb, x_ub = np.array([0, -x_dot, 4, -x_dot]), np.array([2, x_dot, 6, x_dot])
-    elif letter == "AR":
-        x_lb, x_ub = np.array([4, -x_dot, 4, -x_dot]), np.array([6, x_dot, 6, x_dot])
-    elif letter == "LB":
-        x_lb, x_ub = np.array([0, -x_dot, 0, -x_dot]), np.array([2, x_dot, 2, x_dot])
-    elif letter == "BR":
-        x_lb, x_ub = np.array([4, -x_dot, 0, -x_dot]), np.array([6, x_dot, 2, x_dot])
+
+    (x,y), (w,h) = get_set_centers(number)
+
+    x_lb = np.array([x-w, -x_dot, y-h, -x_dot])
+    x_ub = np.array([x+w, x_dot, y+h, x_dot])
 
     x_lb = x_lb.reshape(4,1)
     x_ub = x_ub.reshape(4,1)
@@ -109,13 +121,15 @@ def make_a_bigger_mpc_test(N=10, verbose=False, dt = 0.1, lqr_policy=False, push
     prog = MathematicalProgram()
     # set_names = ["LL", "RR", "BB", "AA", "LA", "AR", "LB", "BR"]
     set_names = ["RR", "BB", "LB", "BR", "AR"]
+    set_names = ["0" + str(i) for i in range(1,6)]
 
     for n in range(N + 1):
         # for each layer
         new_layer = []  # type: T.List[Vertex]
         for set_name in set_names:
             # for each vertex in that layer
-            lb, ub = get_LRAB_diag_vertex_boundaries(set_name)
+            lb,ub = get_boundaries(int(set_name))
+            # lb, ub = get_LRAB_diag_vertex_boundaries(set_name)
             v = BoxVertex( str(n) + set_name, prog, lb, ub, PSD_ON_STATE, state_dim, x_star, (B,R)  )
             new_layer.append(v)
         vertices.append(new_layer)
@@ -124,25 +138,7 @@ def make_a_bigger_mpc_test(N=10, verbose=False, dt = 0.1, lqr_policy=False, push
     for n in range(N):
         for v in vertices[n]:
             for w in vertices[n + 1]:
-                add_me = False
-                if "LL" in v.name and ("LL" in w.name or "LB" in w.name):
-                    add_me = True
-                if "LA" in v.name and ("LA" in w.name or "LL" in w.name):
-                    add_me = True
-                if "AA" in v.name and ("LA" in w.name or "AA" in w.name):
-                    add_me = True
-                if "AR" in v.name and ("AA" in w.name or "AR" in w.name or "RR" in w.name):
-                    add_me = True
-                if "RR" in v.name and ("RR" in w.name or "BR" in w.name):
-                    add_me = True
-                if "BR" in v.name and ("BR" in w.name or "BB" in w.name):
-                    add_me = True
-                if "BB" in v.name and ("BB" in w.name or "LB" in w.name):
-                    add_me = True
-                if "LB" in v.name and ("LB" in w.name):
-                    add_me = True
-                
-                if add_me:
+                if check_edge(int(v.name[-2:]), int(w.name[-2:])):
                     e = LinearDynamicsEdge(v, w)
                     e.s_procedure(prog, A, B, Q, R, intersections=False)
                     edges.append(e)
@@ -152,24 +148,11 @@ def make_a_bigger_mpc_test(N=10, verbose=False, dt = 0.1, lqr_policy=False, push
         prog.AddLinearConstraint(eq(v.Q[:state_dim, :state_dim], Q_final))
         prog.AddLinearConstraint(eq(v.r[:state_dim], -Q_final @ x_star))
         prog.AddLinearConstraint(v.s[0,0] == (x_star.T @ Q_final @ x_star))
-    # for v in vertices[-2]:
-    #     prog.AddLinearConstraint(eq(v.Q[:state_dim, :state_dim], Q))
-    #     prog.AddLinearConstraint(eq(v.r[:state_dim], -Q_final @ x_star))
-    #     prog.AddLinearConstraint(v.s[0,0] == (x_star.T @ Q_final @ x_star))
-    # for v in vertices[-3]:
-    #     prog.AddLinearConstraint(eq(v.Q[:state_dim, :state_dim], Q))
-    #     prog.AddLinearConstraint(eq(v.r[:state_dim], -Q_final @ x_star))
-    #     prog.AddLinearConstraint(v.s[0,0] == (x_star.T @ Q_final @ x_star))
-    # for v in vertices[-4]:
-    #     prog.AddLinearConstraint(eq(v.Q[:state_dim, :state_dim], Q))
-    #     prog.AddLinearConstraint(eq(v.r[:state_dim], -Q_final @ x_star))
-    #     prog.AddLinearConstraint(v.s[0,0] == (x_star.T @ Q_final @ x_star))
-
 
     # push up cost jsut at first layer or everywhre
     if push_up_only_at_0 :
         for v in vertices[0]:
-            if v.name == "0AR":
+            if v.name == "005" or v.name == "004":
                 prog.AddLinearCost(-v.cost_of_integral_over_the_state())
     else:
         for layer in vertices:
